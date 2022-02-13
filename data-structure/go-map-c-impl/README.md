@@ -1,2 +1,2 @@
-# Implementation of Golang Builtin Hashmap in C
+# Implementation of Golang Builtin HashMap in C
 

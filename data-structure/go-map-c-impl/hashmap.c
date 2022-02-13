@@ -56,7 +56,7 @@ void make_bucket_array(uint8_t b, bmap **buckets_ref,
     if (b > 4) {
         // About extra 1/16 of normal buckets is allocated for overflow buckets.
         nbuckets += bucket_shift(b - 4);
-        // NOTE: Remove memory allcation round up.
+        // NOTE: Remove memory allocation round up.
     }
 
     bmap *buckets = malloc(nbuckets * sizeof(bmap));
