@@ -1,12 +1,17 @@
-#include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
-#include <string.h>
 
 #include "crc32hash.h"
+#include "hashmap.h"
+
+typedef struct _hmap {
+    size_t count;
+    uint8_t B;
+} hmap;
 
 int main() {
-    size_t x = 1;
-    size_t y = 64;
-    printf("%lu\n", x << y);
+    hmap *m = hashmap_new(105);
+    printf("%lu\n", m->count);
+    printf("%d\n", m->B);
 }

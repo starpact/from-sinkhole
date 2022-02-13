@@ -1,5 +1,5 @@
-#ifndef __CRC32__
-#define __CRC32__
+#ifndef __CRC32_HASH__
+#define __CRC32_HASH__
 
 #include <stddef.h>
 #include <stdint.h>
