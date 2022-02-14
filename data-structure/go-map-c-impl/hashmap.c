@@ -6,17 +6,18 @@
 #include "crc32hash.h"
 #include "hashmap.h"
 
-const size_t BUCKET_BITS = 3;
-const size_t BUCKET_COUNT = 1 << BUCKET_BITS;
+#define BUCKET_BITS 3
+#define BUCKET_COUNT 8
 
-const size_t LOAD_FACTOR_NUM = 13;
-const size_t LOAD_FACTOR_DEN = 2;
+#define LOAD_FACTOR_NUM 13
+#define LOAD_FACTOR_DEN 2
 
 typedef struct _bmap {
-    uint8_t tophashes[8];
+    uint8_t tophashes[BUCKET_COUNT];
     struct _bmap *overflow;
-    char *keys[8];
-    // followed by values[8] size of which cannot be determined at compile time.
+    char *keys[BUCKET_COUNT];
+    // followed by values[BUCKET_COUNT] size of which cannot be determined at
+    // compile time.
 } bmap;
 
 typedef struct _hmap {
@@ -29,7 +30,7 @@ typedef struct _hmap {
 
 // Convert B to actual length of *NORMAL* buckets.
 size_t bucket_shift(uint8_t b) {
-    return (size_t)1 << (b & (sizeof(size_t) * 8 - 1));
+    return (size_t)1 << (b & (sizeof(size_t) * BUCKET_COUNT - 1));
 }
 
 size_t bucket_mask(uint8_t b) { return bucket_shift(b) - 1; }
@@ -55,7 +56,7 @@ void make_bucket_array(hmap *h) {
         // NOTE: Remove memory allocation round up.
     }
 
-    size_t bucket_size = sizeof(bmap) + h->element_size * 8;
+    size_t bucket_size = sizeof(bmap) + h->element_size * BUCKET_COUNT;
     h->buckets = malloc(nbuckets * bucket_size);
 
     if (base != nbuckets) {
