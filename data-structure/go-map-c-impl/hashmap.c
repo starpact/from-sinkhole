@@ -12,22 +12,19 @@ const size_t BUCKET_COUNT = 1 << BUCKET_BITS;
 const size_t LOAD_FACTOR_NUM = 13;
 const size_t LOAD_FACTOR_DEN = 2;
 
-typedef struct _entry {
-    char *key;
-    any_t value;
-} entry;
-
 typedef struct _bmap {
     uint8_t tophashes[8];
-    entry entries[8];
     struct _bmap *overflow;
+    char *keys[8];
+    // followed by values[8] size of which cannot be determined at compile time.
 } bmap;
 
 typedef struct _hmap {
     size_t count;
     uint8_t B; // log2(len(buckets))
-    bmap *buckets;
-    bmap *next_overflow;
+    uint8_t element_size;
+    void *buckets;
+    void *next_overflow;
 } hmap;
 
 // Convert B to actual length of *NORMAL* buckets.
@@ -46,33 +43,34 @@ bool over_load_factor(size_t count, uint8_t B) {
            count > LOAD_FACTOR_NUM * (bucket_shift(B) / LOAD_FACTOR_DEN);
 }
 
-void make_bucket_array(uint8_t b, bmap **buckets_ref,
-                       bmap **next_overflow_ref) {
-    size_t base = bucket_shift(b);
+void make_bucket_array(hmap *h) {
+    size_t base = bucket_shift(h->B);
     size_t nbuckets = base;
 
     // For small b, overflow is almost impossible so do not allocate extra
     // memory for overflow buckets.
-    if (b > 4) {
+    if (h->B > 4) {
         // About extra 1/16 of normal buckets is allocated for overflow buckets.
-        nbuckets += bucket_shift(b - 4);
+        nbuckets += bucket_shift(h->B - 4);
         // NOTE: Remove memory allocation round up.
     }
 
-    bmap *buckets = malloc(nbuckets * sizeof(bmap));
-    *buckets_ref = buckets;
+    size_t bucket_size = sizeof(bmap) + h->element_size * 8;
+    h->buckets = malloc(nbuckets * bucket_size);
 
     if (base != nbuckets) {
-        *next_overflow_ref = buckets + base;
+        h->next_overflow = h->buckets + base * bucket_size;
         // When overflow is NULL, there are still available overflow buckets.
         // So here we need to manually mark the LAST overflow bucket.
-        buckets[nbuckets - 1].overflow = buckets;
+        ((bmap *)(h->buckets + (nbuckets - 1) * bucket_size))->overflow =
+            h->buckets;
     }
 }
 
-map_t hashmap_new(size_t hint) {
+map_t hashmap_new(uint8_t element_size, size_t hint) {
     hmap *h = malloc(sizeof(hmap));
     h->count = 0;
+    h->element_size = element_size;
 
     uint8_t B = 0;
     while (over_load_factor(hint, B)) {
@@ -81,7 +79,7 @@ map_t hashmap_new(size_t hint) {
     h->B = B;
 
     if (h->B > 0) {
-        make_bucket_array(h->B, &h->buckets, &h->next_overflow);
+        make_bucket_array(h);
     }
 
     return h;
