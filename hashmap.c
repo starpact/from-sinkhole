@@ -13,17 +13,20 @@
 #define LOAD_FACTOR_DEN 2
 
 typedef struct _bmap {
-    uint8_t tophashes[BUCKET_COUNT];
+    uint8_t tophash[BUCKET_COUNT];
     struct _bmap *overflow;
+    // NOTE: Here we directly use string as keys rather than dynamic type to
+    // simplify the problem because keys need extra function pointers such as
+    // `hash` and `equal`.
     char *keys[BUCKET_COUNT];
-    // followed by values[BUCKET_COUNT] size of which cannot be determined at
-    // compile time.
+    // Followed by values[BUCKET_COUNT], size of which depends on the type of
+    // values stored in the map instance.
 } bmap;
 
 typedef struct _hmap {
     size_t count;
     uint8_t B; // log2(len(buckets))
-    uint8_t element_size;
+    uint8_t value_size;
     void *buckets;
     void *next_overflow;
 } hmap;
@@ -53,10 +56,10 @@ void make_bucket_array(hmap *h) {
     if (h->B > 4) {
         // About extra 1/16 of normal buckets is allocated for overflow buckets.
         nbuckets += bucket_shift(h->B - 4);
-        // NOTE: Remove memory allocation round up.
+        // TODO: Memory allocation round up.
     }
 
-    size_t bucket_size = sizeof(bmap) + h->element_size * BUCKET_COUNT;
+    size_t bucket_size = sizeof(bmap) + h->value_size * BUCKET_COUNT;
     h->buckets = malloc(nbuckets * bucket_size);
 
     if (base != nbuckets) {
@@ -71,7 +74,7 @@ void make_bucket_array(hmap *h) {
 map_t hashmap_new(uint8_t element_size, size_t hint) {
     hmap *h = malloc(sizeof(hmap));
     h->count = 0;
-    h->element_size = element_size;
+    h->value_size = element_size;
 
     uint8_t B = 0;
     while (over_load_factor(hint, B)) {
