@@ -1,3 +1,4 @@
+#include <assert.h>
 #include <stddef.h>
 #include <stdio.h>
 
@@ -10,9 +11,11 @@ typedef struct _hmap {
     uint8_t value_size;
 } hmap;
 
-int main() {
+void test_new() {
     hmap *m = hashmap_new(8, 1000);
-    printf("count: %lu\n", m->count);
-    printf("element_size: %d\n", m->value_size);
-    printf("buckets: %d\n", 1 << m->B);
+    assert(m->count == 0);
+    assert(m->value_size == 8);
+    assert(1 << m->B == 256);
 }
+
+int main() { test_new(); }
