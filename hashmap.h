@@ -10,16 +10,16 @@ typedef void *map_t;
 #define MAP_OOM -1     // Out of Memory
 #define MAP_OK 0       // Ok
 
-map_t hashmap_new(uint8_t element_size, size_t hint);
+map_t hashmap_new(uint8_t value_size, size_t hint);
 
 void hashmap_free(map_t m);
 
 size_t hashmap_len(map_t m);
 
-int hashmap_get(map_t m, const char *key, void **value_ref);
+int hashmap_get(map_t m, const char *key, void *value_ref);
 
-int hashmap_insert(map_t t, const char *key, void *value);
+int hashmap_insert(map_t m, const char *key, const void *value_ref);
 
-int hashmap_remove(map_t t, const char *key, void *value);
+int hashmap_remove(map_t m, const char *key, void *value_ref);
 
 #endif
