@@ -10,7 +10,9 @@ typedef void *map_t;
 #define MAP_OOM -1     // Out of Memory
 #define MAP_OK 0       // Ok
 
-map_t hashmap_new(uint8_t value_size, size_t hint);
+#define hashmap_new(value_type, hint) _hashmap_new(sizeof(value_type), hint)
+
+map_t _hashmap_new(uint8_t value_size, size_t hint);
 
 void hashmap_free(map_t m);
 

@@ -3,9 +3,12 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "crc32hash.h"
 #include "hashmap.h"
+
+#define DEBUG // debug enabled
 
 #define BUCKET_BITS 3
 #define BUCKET_COUNT 8
@@ -13,11 +16,33 @@
 #define LOAD_FACTOR_NUM 13
 #define LOAD_FACTOR_DEN 2
 
-// this cell is empty, no more non-empty cells at higher indexes
-// or overflows.
+// This cell is empty, and there is no more non-empty cells at higher indexes or
+// overflows.
 #define TOPHASH_EMPTY_REST 0
-#define TOPHASH_EMPTY 1
+// This cell is empty.
+#define TOPHASH_EMPTY_ONE 1
 #define TOPHASH_MIN 5
+
+#define panicf(...)                                                            \
+    do {                                                                       \
+        fprintf(stderr, "[PANIC] %s: %d | ", __FILE__, __LINE__);              \
+        fprintf(stderr, __VA_ARGS__);                                          \
+        fflush(stderr);                                                        \
+        exit(EXIT_FAILURE);                                                    \
+    } while (0);
+
+#ifdef DEBUG
+#define debugf(...)                                                            \
+    do {                                                                       \
+        fprintf(stdout, "[DEBUG] %s: %d | ", __FILE__, __LINE__);              \
+        fprintf(stdout, __VA_ARGS__);                                          \
+        fflush(stdout);                                                        \
+    } while (0);
+#else
+#define debugf(...)                                                            \
+    do {                                                                       \
+    } while (0);
+#endif
 
 typedef struct _bmap {
     uint8_t tophash[BUCKET_COUNT];
@@ -36,6 +61,7 @@ typedef struct _hmap {
     uint8_t value_size;
     uint16_t bucket_size;
     void *buckets;
+    void *old_buckets;
     void *next_overflow;
 } hmap;
 
@@ -51,7 +77,7 @@ uint8_t tophash(size_t hash) {
     return top < TOPHASH_MIN ? top + TOPHASH_MIN : top;
 }
 
-bool tophash_is_empty(uint8_t top) { return top <= TOPHASH_EMPTY; }
+bool tophash_is_empty(uint8_t top) { return top <= TOPHASH_EMPTY_ONE; }
 
 bool over_load_factor(size_t count, uint8_t B) {
     // When there are less then 8 elements, there should be 1 bucket and B
@@ -68,11 +94,9 @@ void make_bucket_array(hmap *h) {
 
     // For small b, overflow is almost impossible so do not allocate extra
     // memory for overflow buckets.
-    if (h->B > 4) {
+    if (h->B > 4)
         // About extra 1/16 of normal buckets is allocated for overflow buckets.
         nbuckets += bucket_shift(h->B - 4);
-        // TODO: Memory allocation round up.
-    }
 
     h->buckets = calloc(nbuckets, h->bucket_size);
 
@@ -85,12 +109,11 @@ void make_bucket_array(hmap *h) {
     }
 }
 
-map_t hashmap_new(uint8_t value_size, size_t hint) {
+map_t _hashmap_new(uint8_t value_size, size_t hint) {
     const size_t bucket_size = sizeof(bmap) + value_size * BUCKET_COUNT;
     if (bucket_size > (uint16_t)(-1)) {
-        printf("Bucket_size(%zu) exceeds limit(%d), consider using pointer\n",
+        panicf("Bucket_size(%zu) exceeds limit(%d), use pointer instead\n",
                bucket_size, (uint16_t)(-1));
-        exit(EXIT_FAILURE);
     }
 
     hmap *h = malloc(sizeof(hmap));
@@ -100,23 +123,21 @@ map_t hashmap_new(uint8_t value_size, size_t hint) {
     h->value_size = value_size;
 
     uint8_t B = 0;
-    while (over_load_factor(hint, B)) {
+    while (over_load_factor(hint, B))
         B++;
-    }
     h->B = B;
 
-    if (h->B > 0) {
+    if (h->B > 0)
         make_bucket_array(h);
-    }
 
     return h;
 }
 
 int hashmap_get(map_t m, const char *key, void *value_ref) {
     hmap *h = m;
-    if (h == NULL || h->count == 0) {
+    if (h == NULL || h->count == 0)
         return MAP_MISSING;
-    }
+
     size_t hash = hash_str(key);
     size_t mask = bucket_mask(h->B);
     bmap *b = h->buckets + h->bucket_size * (hash & mask);
@@ -125,53 +146,76 @@ int hashmap_get(map_t m, const char *key, void *value_ref) {
     for (; b != NULL; b = b->overflow) {
         for (size_t i = 0; i < BUCKET_COUNT; i++) {
             if (top != b->tophash[i]) {
-                if (b->tophash[i] == TOPHASH_EMPTY_REST) {
+                if (b->tophash[i] == TOPHASH_EMPTY_REST)
                     return MAP_MISSING;
-                }
                 continue;
             }
-            if (key == b->keys[i]) {
-                if (h->value_size == 0) {
-                    return MAP_OK;
-                }
+            if (strcmp(b->keys[i], key) == 0) {
                 void *value = (void *)(b + 1) + h->value_size * i;
                 memcpy(value_ref, value, h->value_size);
                 return MAP_OK;
             }
         }
     }
-
     return MAP_MISSING;
 }
 
 int hashmap_insert(map_t m, const char *key, const void *value_ref) {
-    if (!m) {
-        printf("Map uninitialized");
-        exit(EXIT_FAILURE);
-    }
-
+    if (!m)
+        panicf("Map uninitialized\n");
     hmap *h = m;
-    size_t hash = hash_str(key);
-    if (!h->buckets) {
+    if (!value_ref && h->value_size != 0)
+        panicf("Value pointer must not be NULL if value size is not zero\n");
+
+    if (!h->buckets)
         h->buckets = calloc(1, h->bucket_size);
-    }
+
+    size_t hash = hash_str(key);
     size_t bucket = hash & bucket_mask(h->B);
     bmap *b = h->buckets + h->bucket_size * bucket;
     uint8_t top = tophash(hash);
+
+    uint8_t *top_write = NULL;
+    const char **key_write = NULL;
+    void *value_write = NULL;
+
     for (;;) {
         for (size_t i = 0; i < BUCKET_COUNT; i++) {
             if (b->tophash[i] != top) {
-                if (tophash_is_empty(b->tophash[i])) {
-                    b->tophash[i] = top;
-                    b->keys[i] = key;
-                    void *value = (void *)(b + 1) + h->bucket_size * i;
-                    memcpy(value, value_ref, h->value_size);
-                    h->count++;
-                    return MAP_OK;
+                if (tophash_is_empty(b->tophash[i]) && !top_write) {
+                    top_write = &(b->tophash[i]);
+                    key_write = &b->keys[i];
+                    value_write = (void *)(b + 1) + h->value_size * i;
                 }
+                if (b->tophash[i] == TOPHASH_EMPTY_REST)
+                    goto writekey;
+                continue;
             }
+            if (strcmp(b->keys[i], key))
+                continue;
+            // Already have a mapping for key. Update it.
+            value_write = (void *)(b + 1) + h->value_size * i;
+            goto writevalue;
         }
+        bmap *ovf = b->overflow;
+        if (!ovf)
+            break;
+        b = ovf;
     }
+
+writekey:
+    if (!h->old_buckets && (over_load_factor(h->count, h->B)))
+        panicf("TODO: hashgrow");
+
+    if (!top_write)
+        panicf("TODO: newoverflow");
+
+    *top_write = top;
+    *key_write = key;
+    h->count++;
+
+writevalue:
+    memcpy(value_write, value_ref, h->value_size);
 
     return MAP_OK;
 }
