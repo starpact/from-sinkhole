@@ -140,10 +140,14 @@ map_t _hashmap_new(uint8_t value_size, size_t hint) {
     }
 
     hmap *h = malloc(sizeof(hmap));
-
-    h->bucket_size = bucket_size;
     h->count = 0;
     h->value_size = value_size;
+    h->bucket_size = bucket_size;
+    h->noverflow = 0;
+    h->buckets = NULL;
+    h->old_buckets = NULL;
+    h->nevacuate = 0;
+    h->next_overflow = NULL;
 
     uint8_t B = 0;
     while (over_load_factor(hint, B))
@@ -166,6 +170,7 @@ int hashmap_get(map_t m, const char *key, void *value_ref) {
     bmap *b = h->buckets + (hash & mask) * h->bucket_size;
     if (h->old_buckets != NULL) {
         bmap *oldb = h->old_buckets + (hash & mask) * h->bucket_size;
+        // TODO: if not same size expansion, mask >>= 1.
         if (!bucket_evacuated(oldb))
             b = oldb;
     }
