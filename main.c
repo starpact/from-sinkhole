@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
 
 #include "crc32hash.h"
@@ -20,8 +21,8 @@ void test_init_with_size_hint() {
 
 void test_basic_type() {
     map_t m = hashmap_new(int, 0);
-    char *keys[8] = {"a", "b", "c", "d", "e", "f", "g", "h"};
-    for (int i = 0; i < 8; i++) {
+    char *keys[9] = {"a", "b", "c", "d", "e", "f", "g", "h", "i"};
+    for (int i = 0; i < sizeof(keys) / sizeof(char *); i++) {
         int ret = hashmap_insert(m, keys[i], &i);
         assert(ret == MAP_OK);
     }
@@ -31,6 +32,7 @@ void test_basic_type() {
         int ret = hashmap_get(m, keys[i], &x);
         assert(ret == MAP_OK);
         assert(x == i);
+        printf("%s\n", keys[i]);
     }
 
     // Overwrite.
@@ -88,4 +90,11 @@ void test_zst() {
     assert(ret == MAP_MISSING);
 }
 
-int main() { test_basic_type(); }
+int main() {
+    // test_init_with_size_hint();
+    // test_struct();
+    // test_pointer();
+    // test_zst();
+
+    test_basic_type();
+}

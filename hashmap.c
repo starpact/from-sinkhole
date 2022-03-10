@@ -60,8 +60,12 @@ typedef struct _hmap {
     uint8_t B; // log2(len(buckets))
     uint8_t value_size;
     uint16_t bucket_size;
+    uint16_t noverflow;
+
     void *buckets;
     void *old_buckets;
+    size_t nevacuate; // buckets less than this have been evacuated
+
     void *next_overflow;
 } hmap;
 
@@ -71,6 +75,11 @@ size_t bucket_shift(uint8_t b) {
 }
 
 size_t bucket_mask(uint8_t b) { return bucket_shift(b) - 1; }
+
+bool bucket_evacuated(bmap *b) {
+    uint8_t h = b->tophash[0];
+    return h > TOPHASH_EMPTY_ONE && h < TOPHASH_MIN;
+}
 
 uint8_t tophash(size_t hash) {
     uint8_t top = hash >> (sizeof(size_t) * 8 - 8);
@@ -86,6 +95,10 @@ bool over_load_factor(size_t count, uint8_t B) {
            // Division is calculated before multiplication first to avoid
            // unnecessary overflow.
            count > LOAD_FACTOR_NUM * (bucket_shift(B) / LOAD_FACTOR_DEN);
+}
+
+bool too_many_overflow_buckets(uint16_t noverflow, uint8_t B) {
+    return noverflow >= (uint16_t)1 << (B > 15 ? 15 : B);
 }
 
 void make_bucket_array(hmap *h) {
@@ -107,6 +120,16 @@ void make_bucket_array(hmap *h) {
         ((bmap *)(h->buckets + (nbuckets - 1) * h->bucket_size))->overflow =
             h->buckets;
     }
+}
+
+void hash_grow(hmap *h) {
+    if (over_load_factor(h->count + 1, h->B))
+        h->B++;
+
+    h->old_buckets = h->buckets;
+    make_bucket_array(h);
+    h->nevacuate = 0;
+    h->noverflow = 0;
 }
 
 map_t _hashmap_new(uint8_t value_size, size_t hint) {
@@ -140,7 +163,12 @@ int hashmap_get(map_t m, const char *key, void *value_ref) {
 
     size_t hash = hash_str(key);
     size_t mask = bucket_mask(h->B);
-    bmap *b = h->buckets + h->bucket_size * (hash & mask);
+    bmap *b = h->buckets + (hash & mask) * h->bucket_size;
+    if (h->old_buckets != NULL) {
+        bmap *oldb = h->old_buckets + (hash & mask) * h->bucket_size;
+        if (!bucket_evacuated(oldb))
+            b = oldb;
+    }
     uint8_t top = tophash(hash);
 
     for (; b != NULL; b = b->overflow) {
@@ -157,6 +185,7 @@ int hashmap_get(map_t m, const char *key, void *value_ref) {
             }
         }
     }
+
     return MAP_MISSING;
 }
 
@@ -171,6 +200,8 @@ int hashmap_insert(map_t m, const char *key, const void *value_ref) {
         h->buckets = calloc(1, h->bucket_size);
 
     size_t hash = hash_str(key);
+
+again:;
     size_t bucket = hash & bucket_mask(h->B);
     bmap *b = h->buckets + h->bucket_size * bucket;
     uint8_t top = tophash(hash);
@@ -204,8 +235,11 @@ int hashmap_insert(map_t m, const char *key, const void *value_ref) {
     }
 
 writekey:
-    if (!h->old_buckets && (over_load_factor(h->count, h->B)))
-        panicf("TODO: hashgrow");
+    if (!h->old_buckets && (over_load_factor(h->count + 1, h->B) ||
+                            too_many_overflow_buckets(h->noverflow, h->B))) {
+        hash_grow(h);
+        goto again;
+    }
 
     if (!top_write)
         panicf("TODO: newoverflow");
