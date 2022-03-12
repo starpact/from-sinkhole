@@ -23,6 +23,8 @@
 #define TOPHASH_EMPTY_ONE 1
 #define TOPHASH_MIN 5
 
+#define FLAG_SAME_SIZE_GROW 8
+
 #define panicf(...)                                                            \
     do {                                                                       \
         fprintf(stderr, "[PANIC] %s: %d | ", __FILE__, __LINE__);              \
@@ -57,6 +59,7 @@ typedef struct _bmap {
 
 typedef struct _hmap {
     size_t count;
+    uint8_t flags;
     uint8_t B; // log2(len(buckets))
     uint8_t value_size;
     uint16_t bucket_size;
@@ -122,6 +125,8 @@ void make_bucket_array(hmap *h) {
     }
 }
 
+bool same_size_grow(hmap *h) { return (h->flags & FLAG_SAME_SIZE_GROW) != 0; }
+
 void hash_grow(hmap *h) {
     if (over_load_factor(h->count + 1, h->B))
         h->B++;
@@ -130,6 +135,33 @@ void hash_grow(hmap *h) {
     make_bucket_array(h);
     h->nevacuate = 0;
     h->noverflow = 0;
+}
+
+void grow_work(hmap *h) { panicf("TODO: grow_work\n"); }
+
+void hashmap_print(map_t m) {
+    if (!m) {
+        printf("Uninitialized map\n");
+        return;
+    }
+
+    hmap *h = m;
+    void *nb = h->buckets;
+    for (size_t n = 0; n < bucket_shift(h->B); n++, nb += h->bucket_size) {
+        printf("%zu\t", n);
+        for (bmap *b = nb; b; b = b->overflow) {
+            printf("[");
+            for (size_t i = 0; i < BUCKET_COUNT; i++) {
+                printf("%d\t", b->tophash[i]);
+            }
+            printf("]\n");
+            printf("\t[");
+            for (size_t i = 0; i < BUCKET_COUNT; i++) {
+                printf("%s\t", b->keys[i]);
+            }
+            printf("]\n");
+        }
+    }
 }
 
 map_t _hashmap_new(uint8_t value_size, size_t hint) {
@@ -169,14 +201,15 @@ int hashmap_get(map_t m, const char *key, void *value_ref) {
     size_t mask = bucket_mask(h->B);
     bmap *b = h->buckets + (hash & mask) * h->bucket_size;
     if (h->old_buckets != NULL) {
+        if (!same_size_grow(h))
+            mask >>= 1;
         bmap *oldb = h->old_buckets + (hash & mask) * h->bucket_size;
-        // TODO: if not same size expansion, mask >>= 1.
         if (!bucket_evacuated(oldb))
             b = oldb;
     }
     uint8_t top = tophash(hash);
 
-    for (; b != NULL; b = b->overflow) {
+    for (; b; b = b->overflow) {
         for (size_t i = 0; i < BUCKET_COUNT; i++) {
             if (top != b->tophash[i]) {
                 if (b->tophash[i] == TOPHASH_EMPTY_REST)
@@ -184,8 +217,10 @@ int hashmap_get(map_t m, const char *key, void *value_ref) {
                 continue;
             }
             if (strcmp(b->keys[i], key) == 0) {
-                void *value = (void *)(b + 1) + h->value_size * i;
-                memcpy(value_ref, value, h->value_size);
+                if (h->value_size > 0) {
+                    void *value = (void *)(b + 1) + h->value_size * i;
+                    memcpy(value_ref, value, h->value_size);
+                }
                 return MAP_OK;
             }
         }
@@ -208,6 +243,9 @@ int hashmap_insert(map_t m, const char *key, const void *value_ref) {
 
 again:;
     size_t bucket = hash & bucket_mask(h->B);
+    if (h->old_buckets) {
+        grow_work(h);
+    }
     bmap *b = h->buckets + h->bucket_size * bucket;
     uint8_t top = tophash(hash);
 
@@ -254,7 +292,8 @@ writekey:
     h->count++;
 
 writevalue:
-    memcpy(value_write, value_ref, h->value_size);
+    if (h->value_size > 0)
+        memcpy(value_write, value_ref, h->value_size);
 
     return MAP_OK;
 }

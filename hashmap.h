@@ -16,6 +16,8 @@ map_t _hashmap_new(uint8_t value_size, size_t hint);
 
 void hashmap_free(map_t m);
 
+void hashmap_print(map_t m);
+
 size_t hashmap_len(map_t m);
 
 int hashmap_get(map_t m, const char *key, void *value_ref);
