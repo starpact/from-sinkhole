@@ -75,7 +75,7 @@ char *rand_str() {
 }
 
 void test_basic() {
-    const int cnt = 8;
+    const int cnt = 9;
     const char **keys = malloc(cnt * sizeof(char *));
     map_t m = hashmap_new(int, 0);
 
