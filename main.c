@@ -64,7 +64,7 @@ void test_different_value_type() {
 
 char *rand_str() {
     size_t r = rand();
-    size_t len = 3 + (r & 3);
+    size_t len = 8;
     char *str = malloc((len + 1) * sizeof(char *));
     for (size_t i = 0; i < len; i++) {
         str[i] = (rand() % 26) + 'a';
@@ -75,7 +75,7 @@ char *rand_str() {
 }
 
 void test_basic() {
-    const int cnt = 9;
+    const int cnt = 53;
     const char **keys = malloc(cnt * sizeof(char *));
     map_t m = hashmap_new(int, 0);
 
@@ -94,9 +94,4 @@ void test_basic() {
     hashmap_print(m);
 }
 
-int main() {
-    test_init_with_size_hint();
-    test_different_value_type();
-
-    test_basic();
-}
+int main() { test_basic(); }
