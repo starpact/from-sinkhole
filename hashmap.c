@@ -63,6 +63,7 @@ typedef struct _bmap {
     const char *keys[BUCKET_COUNT];
     // Followed by values[BUCKET_COUNT], size of which depends on the type of
     // values stored in the map instance.
+    char values[0];
 } bmap;
 
 typedef struct _hmap {
@@ -218,15 +219,15 @@ void evacuate(hmap *h, size_t oldbucket_index) {
         evadst xy[2];
         xy[0].i = 0;
         xy[0].b = h->buckets + oldbucket_index * h->bucket_size;
-        xy[0].v = xy[0].b + 1;
+        xy[0].v = xy[0].b->values;
         if (!same_size_grow(h)) {
             xy[1].i = 0;
             xy[1].b = h->buckets + (oldbucket_index + nold) * h->bucket_size;
-            xy[1].v = xy[1].b + 1;
+            xy[1].v = xy[1].b->values;
         }
 
         for (bool is_overflow_bucket = false; b;) {
-            void *v = b + 1;
+            void *v = b->values;
             for (size_t i = 0; i < BUCKET_COUNT; i++, v += h->value_size) {
                 uint8_t top = b->tophash[i];
                 if (tophash_is_empty(top)) {
@@ -247,7 +248,7 @@ void evacuate(hmap *h, size_t oldbucket_index) {
                 if (dst->i == BUCKET_COUNT) {
                     dst->b = new_overflow(h, dst->b);
                     dst->i = 0;
-                    dst->v = dst->b + 1;
+                    dst->v = dst->b->values;
                 }
 
                 dst->b->tophash[dst->i] = top;
@@ -389,6 +390,7 @@ map_t _hashmap_new(uint8_t value_size, size_t hint) {
 
     hmap *h = malloc(sizeof(hmap));
     h->count = 0;
+    // h->flags = 0;
     h->value_size = value_size;
     h->bucket_size = bucket_size;
     h->noverflow = 0;
@@ -434,7 +436,7 @@ int hashmap_get(map_t m, const char *key, void *value_ref) {
             }
             if (strcmp(b->keys[i], key) == 0) {
                 if (h->value_size > 0) {
-                    void *value = (void *)(b + 1) + h->value_size * i;
+                    void *value = b->values + h->value_size * i;
                     memcpy(value_ref, value, h->value_size);
                 }
                 return MAP_OK;
@@ -475,7 +477,7 @@ again:;
                 if (tophash_is_empty(b->tophash[i]) && !top_write) {
                     top_write = &(b->tophash[i]);
                     key_write = &b->keys[i];
-                    value_write = (void *)(b + 1) + h->value_size * i;
+                    value_write = b->values + h->value_size * i;
                 }
                 if (b->tophash[i] == TOPHASH_EMPTY_REST)
                     goto writekey;
@@ -484,7 +486,7 @@ again:;
             if (strcmp(b->keys[i], key) == 0) {
                 // Already have a mapping for key. Update it.
                 if (h->value_size > 0)
-                    value_write = (void *)(b + 1) + h->value_size * i;
+                    value_write = b->values + h->value_size * i;
                 goto writevalue;
             }
         }
@@ -505,7 +507,7 @@ writekey:
         bmap *newb = new_overflow(h, b);
         top_write = &newb->tophash[0];
         key_write = &newb->keys[0];
-        value_write = newb + 1;
+        value_write = newb->values;
     }
 
     *top_write = top;
