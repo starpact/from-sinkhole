@@ -390,7 +390,7 @@ map_t _hashmap_new(uint8_t value_size, size_t hint) {
 
     hmap *h = malloc(sizeof(hmap));
     h->count = 0;
-    // h->flags = 0;
+    h->flags = 0;
     h->value_size = value_size;
     h->bucket_size = bucket_size;
     h->noverflow = 0;
