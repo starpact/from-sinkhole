@@ -5,7 +5,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "crc32hash.h"
 #include "hashmap.h"
 
 void test_init_with_size_hint() {
@@ -34,7 +33,7 @@ void test_different_value_type() {
     assert(ret == MAP_OK);
     a_t a1;
     ret = hashmap_get(m, "def", &a1);
-    assert(ret == MAP_MISSING);
+    assert(ret == MAP_NOT_FOUND);
     ret = hashmap_get(m, "abc", &a1);
     assert(ret == MAP_OK);
     assert(a1.x == a0.x && a1.y == a0.y);
@@ -47,7 +46,7 @@ void test_different_value_type() {
     assert(ret == MAP_OK);
     int *xp1;
     ret = hashmap_get(m, "def", &xp1);
-    assert(ret == MAP_MISSING);
+    assert(ret == MAP_NOT_FOUND);
     ret = hashmap_get(m, "abc", &xp1);
     assert(ret == MAP_OK);
     assert(xp0 == xp1);
@@ -59,13 +58,12 @@ void test_different_value_type() {
     ret = hashmap_get(m, "abc", NULL);
     assert(ret == MAP_OK);
     ret = hashmap_get(m, "def", NULL);
-    assert(ret == MAP_MISSING);
+    assert(ret == MAP_NOT_FOUND);
 }
 
 char *rand_str() {
-    size_t r = rand();
     size_t len = 8;
-    char *str = malloc((len + 1) * sizeof(char *));
+    char *str = malloc((len + 1) * sizeof(char));
     for (size_t i = 0; i < len; i++) {
         str[i] = (rand() % 26) + 'a';
     }
@@ -76,7 +74,7 @@ char *rand_str() {
 
 void test_basic() {
     const int cnt = 53;
-    const char **keys = malloc(cnt * sizeof(char *));
+    const char **keys = calloc(cnt, sizeof(char *));
     map_t m = hashmap_new(int, 0);
 
     for (int i = 0; i < cnt; i++) {
