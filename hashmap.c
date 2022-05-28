@@ -595,7 +595,6 @@ writekey:
 
     *top_write = top;
     *key_write = key;
-    // strcpy(*key_write, key);
     h->count++;
 
 writevalue:
