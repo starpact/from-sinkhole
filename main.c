@@ -78,7 +78,6 @@ void test_basic() {
     map_t m = hashmap_new(int, 0);
 
     for (int i = 0; i < cnt; i++) {
-        i = 100;
         keys[i] = rand_str();
         int ret = hashmap_insert(m, keys[i], &i);
         assert(ret == MAP_OK);
