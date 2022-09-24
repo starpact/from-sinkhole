@@ -3,7 +3,7 @@
 
   inputs = {
     flake-utils.url = "github:numtide/flake-utils";
-    nixpkgs.url = "github:NixOS/nixpkgs";
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
   };
 
   outputs = { self, flake-utils, nixpkgs }:
@@ -13,10 +13,10 @@
       in
       {
         devShell = pkgs.mkShell {
-          buildInputs = with pkgs; [ clang_14 lldb ];
+          buildInputs = with pkgs; [ ];
 
           shellHook = ''
-            echo "`${pkgs.clang_14}/bin/clang version`"
+            echo "`$CC -v`"
           '';
         };
       }
