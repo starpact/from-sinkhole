@@ -12,9 +12,9 @@
         shellHook = "$CC -v";
       };
 
-    devShell.x86-64-linux =
+    devShell.x86_64-linux =
       let
-        pkgs = import nixpkgs { system = "aarch64-darwin"; };
+        pkgs = import nixpkgs { system = "x86_64-linux"; };
       in
       pkgs.mkShell {
         shellHook = "$CC -v";

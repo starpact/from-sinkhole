@@ -403,7 +403,7 @@ void hashmap_print(map_t m) {
             else {
                 int64_t offset = (void *)b - h->buckets;
                 if (offset > 0 && offset < nbuckets * h->bucket_size)
-                    printf("[%lld]", offset / h->bucket_size);
+                    printf("[%ld]", offset / h->bucket_size);
                 else
                     printf("[?]");
             }
@@ -441,7 +441,7 @@ void hashmap_print(map_t m) {
             else {
                 int64_t offset = (void *)b - h->oldbuckets;
                 if (offset > 0 && offset < nbuckets * h->bucket_size)
-                    printf("[%lld]", offset / h->bucket_size);
+                    printf("[%ld]", offset / h->bucket_size);
                 else
                     printf("[?]");
             }
