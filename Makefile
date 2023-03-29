@@ -1,5 +1,5 @@
 run:
-	mkdir -p bin
-	$(CC) -g -fsanitize=address,undefined main.c hashmap.c -o bin/main && bin/main
+	mkdir -p build
+	$(CC) -g -fsanitize=address,undefined test.c hashmap.c -o build/main && build/main
 lint:
 	clang-tidy *.c
