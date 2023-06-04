@@ -7,8 +7,8 @@
 typedef void *map_t;
 
 #define MAP_NOT_FOUND -2 // No such element
-#define MAP_OOM -1     // Out of Memory
-#define MAP_OK 0       // Ok
+#define MAP_OOM -1       // Out of Memory
+#define MAP_OK 0         // Ok
 
 #define hashmap_new(value_type, hint) _hashmap_new(sizeof(value_type), hint)
 
