@@ -2,7 +2,7 @@
 
 #include <assert.h>
 #include <stdbool.h>
-#include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -11,6 +11,8 @@
 
 #define BUCKET_BITS 3
 #define BUCKET_COUNT 8
+
+#define MAX_VALUE_SIZE 16;
 
 #define LOAD_FACTOR_NUM 13
 #define LOAD_FACTOR_DEN 2
@@ -61,7 +63,7 @@ typedef struct bmap {
   const char *keys[BUCKET_COUNT];
   // Followed by values[BUCKET_COUNT], size of which depends on the type of
   // values stored in the map instance.
-  char values[0];
+  uint8_t values[];
 } bmap_t;
 
 typedef struct hmap {
@@ -137,11 +139,9 @@ static unsigned long crc32_tab[] = {
 
 size_t crc32(const unsigned char *s, size_t len) {
   uintptr_t crc32val = 0;
-
   for (size_t i = 0; i < len; i++) {
     crc32val = crc32_tab[(crc32val ^ s[i]) & 0xff] ^ (crc32val >> 8);
   }
-
   return crc32val;
 }
 
@@ -188,7 +188,7 @@ size_t noldbuckets(hmap_t *h) {
 size_t oldbucket_mask(hmap_t *h) { return noldbuckets(h) - 1; }
 
 uint8_t tophash(size_t hash) {
-  uint8_t top = hash >> (sizeof(size_t) * 8 - 8);
+  uint8_t top = hash >> (sizeof(hash) * 8 - 8);
   return top < TOPHASH_MIN ? top + TOPHASH_MIN : top;
 }
 
@@ -222,9 +222,9 @@ void make_bucket_array(hmap_t *h) {
   if (nnormals != nbuckets) {
     // If there are overflow buckets allocated, set first overflow bucket as
     // `next_overflow`.
-    h->next_overflow = (char *)h->buckets + nnormals * h->bucket_size;
+    h->next_overflow = (uint8_t *)h->buckets + nnormals * h->bucket_size;
     bmap_t *last =
-        (bmap_t *)((char *)h->buckets + (nbuckets - 1) * h->bucket_size);
+        (bmap_t *)((uint8_t *)h->buckets + (nbuckets - 1) * h->bucket_size);
     // `overflow` being NULL means there are still available overflow
     // buckets. So mark the `overflow` of LAST bucket to non-null to
     // indicate there is no more.
@@ -236,6 +236,7 @@ void make_bucket_array(hmap_t *h) {
 }
 
 map_t _hashmap_new(uint8_t value_size, size_t hint) {
+  assert(value_size <= 16);
   const size_t bucket_size = sizeof(bmap_t) + value_size * BUCKET_COUNT;
   if (bucket_size > (uint16_t)(-1)) {
     panicf("Bucket size(%zu) exceeds limit(%d), use pointer as value "
@@ -283,8 +284,8 @@ void advance_evacuation_mark(hmap_t *h, size_t nold) {
   if (stop > nold)
     stop = nold;
   while (h->nevacuate != stop &&
-         bucket_evacuated(
-             (bmap_t *)((char *)h->oldbuckets + h->bucket_size * h->nevacuate)))
+         bucket_evacuated((bmap_t *)((uint8_t *)h->oldbuckets +
+                                     h->bucket_size * h->nevacuate)))
     h->nevacuate++;
   if (h->nevacuate == nold) {
     free(h->oldbuckets);
@@ -299,7 +300,7 @@ bmap_t *new_overflow(hmap_t *h, bmap_t *b) {
     ovf = h->next_overflow;
     if (!ovf->overflow) {
       // This is not the last preallocated overflow buckets.
-      h->next_overflow = (char *)ovf + h->bucket_size;
+      h->next_overflow = (uint8_t *)ovf + h->bucket_size;
     } else {
       ovf->overflow = NULL;
       h->next_overflow = NULL;
@@ -323,34 +324,36 @@ bmap_t *new_overflow(hmap_t *h, bmap_t *b) {
 
 bool is_isolated_overflow(const void *b, const void *buckets,
                           size_t bucket_size, size_t nbuckets) {
-  return b < buckets || b > (void *)((char *)buckets + nbuckets * bucket_size);
+  return b < buckets ||
+         b > (void *)((uint8_t *)buckets + nbuckets * bucket_size);
 }
 
 void evacuate(hmap_t *h, size_t oldbucket_index) {
   bmap_t *b =
-      (bmap_t *)((char *)h->oldbuckets + (oldbucket_index * h->bucket_size));
+      (bmap_t *)((uint8_t *)h->oldbuckets + (oldbucket_index * h->bucket_size));
   size_t nold = noldbuckets(h);
 
   if (!bucket_evacuated(b)) {
     typedef struct _evadst {
       bmap_t *b;
       size_t i;
-      char *v;
+      uint8_t *v;
     } evadst;
 
     evadst xy[2];
     xy[0].i = 0;
-    xy[0].b = (bmap_t *)((char *)h->buckets + oldbucket_index * h->bucket_size);
+    xy[0].b =
+        (bmap_t *)((uint8_t *)h->buckets + oldbucket_index * h->bucket_size);
     xy[0].v = xy[0].b->values;
     if (!same_size_grow(h)) {
       xy[1].i = 0;
-      xy[1].b = (bmap_t *)((char *)h->buckets +
+      xy[1].b = (bmap_t *)((uint8_t *)h->buckets +
                            (oldbucket_index + nold) * h->bucket_size);
       xy[1].v = xy[1].b->values;
     }
 
     for (bool is_overflow_bucket = false; b;) {
-      char *v = b->values;
+      uint8_t *v = b->values;
       for (size_t i = 0; i < BUCKET_COUNT; i++, v += h->value_size) {
         uint8_t top = b->tophash[i];
         if (tophash_is_empty(top)) {
@@ -432,7 +435,7 @@ void hashmap_print(map_t m) {
   printf("+:\tvalid entry\n");
   printf("\n");
 
-  char *nb = h->buckets;
+  uint8_t *nb = h->buckets;
   for (size_t n = 0; n < bucket_shift(h->B); n++, nb += h->bucket_size) {
     size_t chain_cnt = 0;
     for (bmap_t *b = (bmap_t *)nb; b; b = b->overflow, chain_cnt++) {
@@ -442,7 +445,7 @@ void hashmap_print(map_t m) {
         printf("[%zu]", n);
       else {
         int64_t offset = (void *)b - h->buckets;
-        if (offset > 0 && offset < nbuckets * h->bucket_size)
+        if (offset > 0 && (uint64_t)offset < nbuckets * h->bucket_size)
           printf("[%ld]", offset / h->bucket_size);
         else
           printf("[?]");
@@ -480,7 +483,7 @@ void hashmap_print(map_t m) {
         printf("[%zu]", n);
       else {
         int64_t offset = (void *)b - h->oldbuckets;
-        if (offset > 0 && offset < nbuckets * h->bucket_size)
+        if (offset > 0 && (uint64_t)offset < nbuckets * h->bucket_size)
           printf("[%ld]", offset / h->bucket_size);
         else
           printf("[?]");
@@ -511,12 +514,13 @@ int hashmap_get(map_t m, const char *key, void *value_ref) {
 
   size_t hash = hash_str(key);
   size_t mask = bucket_mask(h->B);
-  bmap_t *b = (bmap_t *)((char *)h->buckets + (hash & mask) * h->bucket_size);
+  bmap_t *b =
+      (bmap_t *)((uint8_t *)h->buckets + (hash & mask) * h->bucket_size);
   if (h->oldbuckets) {
     if (!same_size_grow(h))
       mask >>= 1;
     bmap_t *oldb =
-        (bmap_t *)((char *)h->oldbuckets + (hash & mask) * h->bucket_size);
+        (bmap_t *)((uint8_t *)h->oldbuckets + (hash & mask) * h->bucket_size);
     if (!bucket_evacuated(oldb))
       b = oldb;
   }
@@ -559,7 +563,7 @@ again:;
   if (h->oldbuckets) {
     grow_work(h, bucket_index);
   }
-  bmap_t *b = (bmap_t *)((char *)h->buckets + h->bucket_size * bucket_index);
+  bmap_t *b = (bmap_t *)((uint8_t *)h->buckets + h->bucket_size * bucket_index);
   uint8_t top = tophash(hash);
 
   uint8_t *top_write = NULL;
